@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>FXTP Companion</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body { background: #0f0f13; color: #e4e4e7; font-family: sans-serif; padding: 20px; margin: 0; }
+        .btn { background: #7c5cfc; border: none; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 16px; margin: 4px; cursor: pointer; }
+        .btn-danger { background: #e94560; }
+        .btn-success { background: #2e7d32; }
+        input { background: #18181e; border: 1px solid #2a2a32; color: #e4e4e7; padding: 10px; border-radius: 8px; width: 80%; margin: 4px; }
+        .log { background: #0f0f13; border: 1px solid #2a2a32; padding: 10px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 12px; margin-top: 10px; }
+        .row { display: flex; flex-wrap: wrap; gap: 6px; }
+    </style>
+</head>
+<body>
+    <h1>⚡ FXTP Companion</h1>
+    <p id="status">🔴 Disconnected</p>
+    <p id="peerId">Loading...</p>
+    <div class="row">
+        <button class="btn" onclick="launchApp()">🚀 Launch App</button>
+        <button class="btn" onclick="listFiles()">📂 List Files</button>
+        <button class="btn" onclick="downloadFile()">⬇️ Download</button>
+        <button class="btn btn-danger" onclick="runShell()">💻 Shell</button>
+        <button class="btn btn-success" onclick="sendNotif()">🔔 Notify</button>
+        <button class="btn" onclick="copyClipboard()">📋 Copy</button>
+        <button class="btn" onclick="getClipboard()">📋 Get</button>
+        <button class="btn" onclick="takeScreenshot()">📸 Screenshot</button>
+        <button class="btn" onclick="startMirror()">🖥️ Mirror</button>
+        <button class="btn btn-danger" onclick="stopMirror()">⏹️ Stop</button>
+        <button class="btn" onclick="displayHtml()">📄 Display HTML</button>
+    </div>
+    <div>
+        <input id="inputField" placeholder="Value..." />
+        <button class="btn" onclick="sendInput()">Send</button>
+    </div>
+    <div class="log" id="log">Ready.</div>
+
+    <script>
+        let peer = null, connection = null, myId = '', lastAction = '';
+
+        function log(msg) {
+            const el = document.getElementById('log');
+            el.innerHTML += '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n';
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function sendInput() {
+            const val = document.getElementById('inputField').value;
+            if (!val) return;
+            if (lastAction === 'launch') launchApp(val);
+            else if (lastAction === 'list') listFiles(val);
+            else if (lastAction === 'download') downloadFile(val);
+            else if (lastAction === 'shell') runShell(val);
+            else if (lastAction === 'notify') sendNotif(val);
+            else if (lastAction === 'clipboard') copyClipboard(val);
+            else if (lastAction === 'html') displayHtml(val);
+            else log('Unknown action. Click a button first.');
+            document.getElementById('inputField').value = '';
+        }
+
+        function setAction(action) {
+            lastAction = action;
+            document.getElementById('inputField').placeholder = 'Enter ' + action + ' value...';
+            log('Action set: ' + action);
+        }
+
+        function launchApp(pkg) {
+            if (pkg) { setAction('launch'); return; }
+            const val = prompt('Enter package name:');
+            if (val && window.AndroidBridge) { AndroidBridge.launchApp(val); log('Launching: ' + val); }
+        }
+        function listFiles(path) {
+            if (path) { setAction('list'); return; }
+            const val = prompt('Enter path:', '/sdcard');
+            if (val && window.AndroidBridge) { AndroidBridge.listFiles(val); log('Listing: ' + val); }
+        }
+        function downloadFile(path) {
+            if (path) { setAction('download'); return; }
+            const val = prompt('Enter file path:');
+            if (val && window.AndroidBridge) { AndroidBridge.downloadFile(val); log('Downloading: ' + val); }
+        }
+        function runShell(cmd) {
+            if (cmd) { setAction('shell'); return; }
+            const val = prompt('Enter shell command:');
+            if (val && window.AndroidBridge) { AndroidBridge.runShell(val); log('Running: ' + val); }
+        }
+        function sendNotif(msg) {
+            if (msg) { setAction('notify'); return; }
+            const title = prompt('Title:', 'FXTP');
+            const body = prompt('Body:', 'Hello!');
+            if (title && body && window.AndroidBridge) { AndroidBridge.sendNotification(title, body); log('Notification sent.'); }
+        }
+        function copyClipboard(text) {
+            if (text) { setAction('clipboard'); return; }
+            const val = prompt('Enter text to copy:');
+            if (val && window.AndroidBridge) { AndroidBridge.setClipboard(val); log('Copied.'); }
+        }
+        function getClipboard() {
+            if (window.AndroidBridge) { AndroidBridge.getClipboard(); log('Getting clipboard...'); }
+        }
+        function takeScreenshot() {
+            if (window.AndroidBridge) { AndroidBridge.takeScreenshot(); log('Taking screenshot...'); }
+        }
+        function startMirror() {
+            if (window.AndroidBridge) { AndroidBridge.startScreenMirror(); log('Starting mirror...'); }
+        }
+        function stopMirror() {
+            if (window.AndroidBridge) { AndroidBridge.stopScreenMirror(); log('Stopping mirror...'); }
+        }
+        function displayHtml(html) {
+            if (html) { setAction('html'); return; }
+            const htmlContent = prompt('Enter HTML code:');
+            if (htmlContent && window.AndroidBridge) { AndroidBridge.displayHtml(htmlContent); log('Displaying HTML...'); }
+        }
+        function closeHtml() {
+            if (window.AndroidBridge) { AndroidBridge.closeHtml(); log('HTML closed.'); }
+        }
+
+        function initPeer() {
+            peer = new Peer();
+            peer.on('open', (id) => {
+                myId = id;
+                document.getElementById('peerId').textContent = 'Peer ID: ' + id;
+                log('Peer ready: ' + id);
+            });
+            peer.on('connection', (conn) => {
+                connection = conn;
+                document.getElementById('status').innerHTML = '✅ Connected';
+                log('Device connected!');
+                conn.on('data', (data) => {
+                    log('Received: ' + JSON.stringify(data));
+                    handleCommand(data);
+                });
+                conn.on('close', () => {
+                    document.getElementById('status').innerHTML = '🔴 Disconnected';
+                    log('Disconnected.');
+                    connection = null;
+                });
+            });
+            peer.on('error', (err) => log('Peer error: ' + err.message));
+        }
+
+        function handleCommand(data) {
+            if (data.type === 'display_html' && window.AndroidBridge) AndroidBridge.displayHtml(data.value);
+            else if (data.type === 'close_html' && window.AndroidBridge) AndroidBridge.closeHtml();
+            else if (data.type === 'screenshot') takeScreenshot();
+            else if (data.type === 'start_mirror') startMirror();
+            else if (data.type === 'stop_mirror') stopMirror();
+            else if (data.type === 'notification' && window.AndroidBridge) AndroidBridge.sendNotification(data.value.title, data.value.body);
+            else if (data.type === 'clipboard' && window.AndroidBridge) AndroidBridge.setClipboard(data.value);
+            else if (data.type === 'shell' && window.AndroidBridge) AndroidBridge.runShell(data.value);
+            else if (data.type === 'launch_app' && window.AndroidBridge) AndroidBridge.launchApp(data.value);
+            else log('Unknown command: ' + data.type);
+        }
+
+        window.handleBridgeResult = function(type, value) {
+            log(type + ' → ' + value);
+            if (connection) connection.send({ type: type, value: value });
+        };
+
+        initPeer();
+        if (typeof AndroidBridge !== 'undefined') log('APK bridge available.');
+        else log('Running in web mode – limited features.');
+    </script>
+</body>
+</html>
