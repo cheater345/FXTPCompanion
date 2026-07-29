@@ -151,7 +151,17 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(mp.createScreenCaptureIntent(), REQ_MEDIA);
     }
 
-    // --- These methods must be accessible from onActivityResult ---
+    // --- Public methods to send results to JavaScript ---
+    public void sendResult(String type, String value) {
+        mainHandler.post(() -> {
+            String esc = value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n");
+            webView.loadUrl("javascript:if (window.handleBridgeResult) {" +
+                    "window.handleBridgeResult('" + type + "', '" + esc + "');" +
+                    "}");
+        });
+    }
+
+    // --- Mirror and screenshot methods (accessible from onActivityResult) ---
     public void startMirrorInternal() {
         if (mediaProjection == null || isMirroring) return;
         try {
@@ -316,15 +326,6 @@ public class MainActivity extends AppCompatActivity {
                 htmlOverlay.setVisibility(WebView.GONE);
                 htmlOverlay.loadUrl("about:blank");
                 sendResult("display_html_result", "HTML closed");
-            });
-        }
-
-        private void sendResult(String type, String value) {
-            mainHandler.post(() -> {
-                String esc = value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n");
-                webView.loadUrl("javascript:if (window.handleBridgeResult) {" +
-                        "window.handleBridgeResult('" + type + "', '" + esc + "');" +
-                        "}");
             });
         }
     }
