@@ -47,7 +47,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean isMirroring = false;
     private HandlerThread mirrorThread;
     private Handler mirrorHandler;
-    private boolean pendingMirror = false, pendingScreenshot = false;
+    private boolean pendingMirror = false;
+    private boolean pendingScreenshot = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -150,7 +151,63 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(mp.createScreenCaptureIntent(), REQ_MEDIA);
     }
 
+    // --- These methods must be accessible from onActivityResult ---
+    public void startMirrorInternal() {
+        if (mediaProjection == null || isMirroring) return;
+        try {
+            DisplayMetrics m = getResources().getDisplayMetrics();
+            int w = m.widthPixels, h = m.heightPixels, d = m.densityDpi;
+            imageReader = ImageReader.newInstance(w, h, android.graphics.PixelFormat.RGBA_8888, 2);
+            virtualDisplay = mediaProjection.createVirtualDisplay("Mirror", w, h, d,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, imageReader.getSurface(), null, null);
+            isMirroring = true;
+            mirrorThread = new HandlerThread("MirrorThread");
+            mirrorThread.start();
+            mirrorHandler = new Handler(mirrorThread.getLooper());
+            mirrorHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    while (isMirroring) {
+                        Image img = imageReader.acquireLatestImage();
+                        if (img != null) {
+                            ByteBuffer buf = img.getPlanes()[0].getBuffer();
+                            byte[] bytes = new byte[buf.remaining()];
+                            buf.get(bytes);
+                            img.close();
+                            sendResult("mirror_frame", Base64.encodeToString(bytes, Base64.DEFAULT));
+                        }
+                        try { Thread.sleep(100); } catch (InterruptedException e) {}
+                    }
+                }
+            });
+            sendResult("mirror_started", "Mirror started");
+        } catch (Exception e) { sendResult("mirror_started", "Error: " + e.getMessage()); }
+    }
+
+    public void takeScreenshotInternal() {
+        if (mediaProjection == null) return;
+        try {
+            DisplayMetrics m = getResources().getDisplayMetrics();
+            int w = m.widthPixels, h = m.heightPixels, d = m.densityDpi;
+            imageReader = ImageReader.newInstance(w, h, android.graphics.PixelFormat.RGBA_8888, 2);
+            virtualDisplay = mediaProjection.createVirtualDisplay("Screenshot", w, h, d,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, imageReader.getSurface(), null, null);
+            Image img = imageReader.acquireLatestImage();
+            if (img != null) {
+                ByteBuffer buf = img.getPlanes()[0].getBuffer();
+                byte[] bytes = new byte[buf.remaining()];
+                buf.get(bytes);
+                img.close();
+                sendResult("screenshot_data", Base64.encodeToString(bytes, Base64.DEFAULT));
+            } else sendResult("screenshot_data", "Failed");
+            virtualDisplay.release();
+            imageReader.close();
+        } catch (Exception e) { sendResult("screenshot_data", "Error: " + e.getMessage()); }
+    }
+
+    // --- Android Bridge ---
     private class AndroidBridge {
+
         @JavascriptInterface public void launchApp(String pkg) {
             try {
                 Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
@@ -201,62 +258,9 @@ public class MainActivity extends AppCompatActivity {
             takeScreenshotInternal();
         }
 
-        private void takeScreenshotInternal() {
-            if (mediaProjection == null) return;
-            try {
-                DisplayMetrics m = getResources().getDisplayMetrics();
-                int w = m.widthPixels, h = m.heightPixels, d = m.densityDpi;
-                imageReader = ImageReader.newInstance(w, h, android.graphics.PixelFormat.RGBA_8888, 2);
-                virtualDisplay = mediaProjection.createVirtualDisplay("Screenshot", w, h, d,
-                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, imageReader.getSurface(), null, null);
-                Image img = imageReader.acquireLatestImage();
-                if (img != null) {
-                    ByteBuffer buf = img.getPlanes()[0].getBuffer();
-                    byte[] bytes = new byte[buf.remaining()];
-                    buf.get(bytes);
-                    img.close();
-                    sendResult("screenshot_data", Base64.encodeToString(bytes, Base64.DEFAULT));
-                } else sendResult("screenshot_data", "Failed");
-                virtualDisplay.release();
-                imageReader.close();
-            } catch (Exception e) { sendResult("screenshot_data", "Error: " + e.getMessage()); }
-        }
-
         @JavascriptInterface public void startScreenMirror() {
             if (mediaProjection == null) { requestMediaProjection(); pendingMirror = true; return; }
             startMirrorInternal();
-        }
-
-        private void startMirrorInternal() {
-            if (mediaProjection == null || isMirroring) return;
-            try {
-                DisplayMetrics m = getResources().getDisplayMetrics();
-                int w = m.widthPixels, h = m.heightPixels, d = m.densityDpi;
-                imageReader = ImageReader.newInstance(w, h, android.graphics.PixelFormat.RGBA_8888, 2);
-                virtualDisplay = mediaProjection.createVirtualDisplay("Mirror", w, h, d,
-                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, imageReader.getSurface(), null, null);
-                isMirroring = true;
-                mirrorThread = new HandlerThread("MirrorThread");
-                mirrorThread.start();
-                mirrorHandler = new Handler(mirrorThread.getLooper());
-                mirrorHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        while (isMirroring) {
-                            Image img = imageReader.acquireLatestImage();
-                            if (img != null) {
-                                ByteBuffer buf = img.getPlanes()[0].getBuffer();
-                                byte[] bytes = new byte[buf.remaining()];
-                                buf.get(bytes);
-                                img.close();
-                                sendResult("mirror_frame", Base64.encodeToString(bytes, Base64.DEFAULT));
-                            }
-                            try { Thread.sleep(100); } catch (InterruptedException e) {}
-                        }
-                    }
-                });
-                sendResult("mirror_started", "Mirror started");
-            } catch (Exception e) { sendResult("mirror_started", "Error: " + e.getMessage()); }
         }
 
         @JavascriptInterface public void stopScreenMirror() {
@@ -333,4 +337,4 @@ public class MainActivity extends AppCompatActivity {
         if (mirrorThread != null) mirrorThread.quitSafely();
         isMirroring = false;
     }
-}
+        }
